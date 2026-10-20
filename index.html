@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#101522">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="反射シミュレーター">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>反射ルートシミュレーター</title>
+<style>
+:root{color-scheme:dark;--bg:#101522;--panel:#1b2435;--line:#34445f;--accent:#70d6ff;--text:#f4f7ff;--muted:#aab7cc}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
+header{padding:14px 16px 10px;background:#151d2c;position:sticky;top:0;z-index:3;border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0 0 4px}header p{font-size:12px;color:var(--muted);margin:0}
+main{padding:12px;max-width:720px;margin:auto}
+.canvas-wrap{position:relative;background:#05080f;border:1px solid var(--line);border-radius:14px;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:auto;touch-action:none}
+.hint{font-size:12px;color:var(--muted);margin:8px 2px 12px;line-height:1.55}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+button,.file-label{border:1px solid #50617d;border-radius:10px;background:#26354c;color:white;padding:11px 12px;font-size:14px;font-weight:600;display:inline-flex;justify-content:center;align-items:center;min-height:44px;text-align:center}
+button.primary{background:#087fa8;border-color:#21b9e9}button:active,.file-label:active{opacity:.75}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;z-index:-1}
+label.control{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.metric{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin:5px 0 10px}
+.small{font-size:12px;color:var(--muted);line-height:1.5}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13px}
+.status{font-size:13px;line-height:1.5;padding:10px 11px;border-radius:9px;background:#101a2a;border:1px solid #34445f;margin-top:10px;overflow-wrap:anywhere}
+.status.error{border-color:#a84c60;color:#ffd6de}.status.ok{border-color:#367e75;color:#c9fff2}
+footer{font-size:11px;color:var(--muted);padding:10px 4px 28px;line-height:1.6}
+</style>
+</head>
+<body>
+<header><h1>反射ルートシミュレーター</h1><p>スクリーンショットを読み込み、発射位置と方向を調整</p></header>
+<main>
+  <div class="canvas-wrap"><canvas id="board" width="900" height="1200" aria-label="シミュレーション盤面"></canvas></div>
+  <p class="hint">画像を読み込んだら、盤面をタップして発射位置を設定。ボールをドラッグして狙う方向を調整できます。軌道は直線と四辺の反射を計算した目安です。</p>
+  <section class="panel">
+    <div class="row">
+      <label class="file-label" for="imageFile">写真・画像を選択</label>
+      <input id="imageFile" type="file" accept="image/*">
+      <button id="resetBtn" type="button">初期位置に戻す</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="clearBtn" type="button">画像を外す</button>
+      <button id="saveBtn" class="primary" type="button">画像を保存</button>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite">画像を読み込むには「写真・画像を選択」をタップしてください。</div>
+    <p class="small" style="margin-bottom:0">選択した画像は端末内で処理します。外部サーバーには送信しません。</p>
+  </section>
+  <section class="panel">
+    <label class="control" for="bounces">壁反射の回数</label>
+    <input id="bounces" type="range" min="0" max="20" value="6">
+    <div class="metric"><span>反射数</span><strong id="bounceValue">6回</strong></div>
+    <label class="control" for="length">軌道の長さ</label>
+    <input id="length" type="range" min="100" max="3000" step="50" value="1800">
+    <div class="metric"><span>計算距離</span><strong id="lengthValue">1800</strong></div>
+    <label class="control" for="angle">角度（度）</label>
+    <input id="angle" type="range" min="0" max="359" value="315">
+    <div class="metric"><span>発射角度</span><strong id="angleValue">315°</strong></div>
+    <label class="control" for="size">ボール表示サイズ</label>
+    <input id="size" type="range" min="10" max="42" value="22">
+    <div class="metric"><span>表示サイズ</span><strong id="sizeValue">22 px</strong></div>
+    <label class="toggle"><input id="showGrid" type="checkbox"> ガイドグリッドを表示</label>
+  </section>
+  <section class="panel">
+    <div class="row">
+      <button id="rotateLeft" type="button">角度 −1°</button>
+      <button id="rotateRight" type="button">角度 ＋1°</button>
+      <button id="centerBtn" type="button">中央に配置</button>
+    </div>
+  </section>
+  <footer>プロトタイプ v0.2（iPhone読み込み改善版）— 画像内の敵や障害物を自動認識する機能は未実装です。壁反射は盤面の四辺を境界として計算します。実際のモンストの当たり判定・キャラクター固有挙動とは異なる場合があります。</footer>
+</main>
+<script>
+(() => {
+ 'use strict';
+ const canvas=document.getElementById('board'), ctx=canvas.getContext('2d');
+ const imageFile=document.getElementById('imageFile'), statusEl=document.getElementById('status');
+ const bounce=document.getElementById('bounces'), length=document.getElementById('length'), angle=document.getElementById('angle'), size=document.getElementById('size'), grid=document.getElementById('showGrid');
+ let image=null, px=.5, py=.72, dragging=false, pointerId=null;
+ function status(message,kind=''){statusEl.textContent=message;statusEl.className='status'+(kind?' '+kind:'')}
+ function val(el){return Number(el.value)}
+ function fitImage(img){
+   const maxW=900,maxH=1400, ratio=img.naturalWidth/img.naturalHeight;
+   let w=maxW,h=w/ratio;if(h>maxH){h=maxH;w=h*ratio}
+   canvas.width=Math.max(1,Math.round(w));canvas.height=Math.max(1,Math.round(h));draw();
+ }
+ function draw(){
+   const w=canvas.width,h=canvas.height;
+   ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d17';ctx.fillRect(0,0,w,h);
+   if(image){
+     const scale=Math.max(w/image.naturalWidth,h/image.naturalHeight), iw=image.naturalWidth*scale, ih=image.naturalHeight*scale;
+     ctx.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih);
+   }else{
+     const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#17253a');g.addColorStop(1,'#08101c');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+     ctx.strokeStyle='#34445f';ctx.lineWidth=3;ctx.strokeRect(18,18,w-36,h-36);
+     ctx.fillStyle='#dce7fa';ctx.textAlign='center';ctx.font=`bold ${Math.max(25,w*.045)}px sans-serif`;ctx.fillText('画像を読み込んでください',w/2,h*.42);
+     ctx.font=`${Math.max(17,w*.027)}px sans-serif`;ctx.fillStyle='#93a7c4';ctx.fillText('ここをタップして発射位置を設定',w/2,h*.47);
+   }
+   if(grid.checked){
+     ctx.save();ctx.strokeStyle='rgba(180,210,255,.25)';ctx.lineWidth=1;
+     for(let x=0;x<w;x+=w/10){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+     for(let y=0;y<h;y+=h/10){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+     ctx.restore();
+   }
+   let x=px*w,y=py*h,a=val(angle)*Math.PI/180,dx=Math.cos(a),dy=-Math.sin(a);
+   let remaining=val(length),hits=0,points=[{x,y}];
+   while(remaining>0&&hits<=val(bounce)){
+     let tx=Infinity,ty=Infinity;
+     if(dx>1e-8)tx=(w-x)/dx;else if(dx< -1e-8)tx=(0-x)/dx;
+     if(dy>1e-8)ty=(h-y)/dy;else if(dy< -1e-8)ty=(0-y)/dy;
+     const t=Math.min(tx>1e-5?tx:Infinity,ty>1e-5?ty:Infinity);
+     if(!Number.isFinite(t)){points.push({x:x+dx*remaining,y:y+dy*remaining});break}
+     const step=Math.min(t,remaining);x+=dx*step;y+=dy*step;remaining-=step;points.push({x,y});
+     if(step<t+1e-4)break;
+     if(hits>=val(bounce))break;
+     if(Math.abs(tx-ty)<1){dx=-dx;dy=-dy}else if(tx<ty)dx=-dx;else dy=-dy;
+     hits++;x=Math.max(.01,Math.min(w-.01,x));y=Math.max(.01,Math.min(h-.01,y));
+   }
+   ctx.save();ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
+   ctx.strokeStyle='#6fe7ff';ctx.lineWidth=Math.max(3,w*.004);ctx.shadowColor='#00cfff';ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
+   if(points.length>1){const p=points[points.length-1];ctx.beginPath();ctx.arc(p.x,p.y,Math.max(5,w*.009),0,Math.PI*2);ctx.fillStyle='#ffdb70';ctx.fill()}
+   const r=Math.max(55,w*.11),hx=px*w+Math.cos(a)*r,hy=py*h-Math.sin(a)*r;
+   ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px*w,py*h);ctx.lineTo(hx,hy);ctx.stroke();ctx.setLineDash([]);
+   ctx.beginPath();ctx.arc(hx,hy,Math.max(8,w*.015),0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#087fa8';ctx.lineWidth=4;ctx.stroke();
+   ctx.beginPath();ctx.arc(px*w,py*h,val(size),0,Math.PI*2);ctx.fillStyle='rgba(255,95,110,.85)';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
+   ctx.beginPath();ctx.arc(px*w,py*h,val(size)*.42,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.restore();
+   document.getElementById('bounceValue').textContent=val(bounce)+'回';
+   document.getElementById('lengthValue').textContent=val(length);
+   document.getElementById('angleValue').textContent=val(angle)+'°';
+   document.getElementById('sizeValue').textContent=val(size)+' px';
+ }
+ function pos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*canvas.width,y:(e.clientY-r.top)/r.height*canvas.height}}
+ function updatePointer(p){if(dragging==='ball'){px=Math.max(.03,Math.min(.97,p.x/canvas.width));py=Math.max(.03,Math.min(.97,p.y/canvas.height))}
+   else if(dragging==='aim'){const dx=p.x-px*canvas.width,dy=py*canvas.height-p.y;if(Math.hypot(dx,dy)>4){let deg=Math.round(Math.atan2(dy,dx)*180/Math.PI);angle.value=(deg+360)%360}}draw()}
+ canvas.addEventListener('pointerdown',e=>{e.preventDefault();try{canvas.setPointerCapture(e.pointerId)}catch(_){}pointerId=e.pointerId;const p=pos(e);dragging=Math.hypot(p.x-px*canvas.width,p.y-py*canvas.height)<Math.max(60,val(size)*2)?'ball':'aim';updatePointer(p)});
+ canvas.addEventListener('pointermove',e=>{if(dragging&&e.pointerId===pointerId){e.preventDefault();updatePointer(pos(e))}});
+ function up(){dragging=false;pointerId=null}canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+
+ // iOS-friendly: read selected file as a data URL, then wait for image decode before drawing.
+ imageFile.addEventListener('change',e=>{
+   const file=e.target.files&&e.target.files[0];if(!file)return;
+   if(!file.type.startsWith('image/')){status('画像ファイルを選択してください。','error');imageFile.value='';return}
+   status('画像を読み込んでいます…');
+   const reader=new FileReader();
+   reader.onerror=()=>{status('ファイルを読み込めませんでした。写真アプリから画像を保存し直して、もう一度お試しください。','error');imageFile.value=''};
+   reader.onload=()=>{
+     const img=new Image();
+     img.onload=()=>{image=img;fitImage(img);status('画像を読み込みました。盤面をタップして位置・角度を調整できます。','ok')};
+     img.onerror=()=>{status('この画像形式は読み込めませんでした。スクリーンショットをPNGまたはJPEGで保存してお試しください。','error');imageFile.value=''};
+     img.src=String(reader.result);
+   };
+   reader.readAsDataURL(file);
+ });
+ [bounce,length,angle,size,grid].forEach(el=>el.addEventListener('input',draw));
+ document.getElementById('resetBtn').onclick=()=>{px=.5;py=.72;angle.value=315;draw()};
+ document.getElementById('clearBtn').onclick=()=>{image=null;imageFile.value='';canvas.width=900;canvas.height=1200;draw();status('画像を外しました。新しい画像を選択できます.')};
+ document.getElementById('centerBtn').onclick=()=>{px=.5;py=.5;draw()};
+ document.getElementById('rotateLeft').onclick=()=>{angle.value=(val(angle)+359)%360;draw()};
+ document.getElementById('rotateRight').onclick=()=>{angle.value=(val(angle)+1)%360;draw()};
+ document.getElementById('saveBtn').onclick=()=>{try{const a=document.createElement('a');a.download='reflection-route.png';a.href=canvas.toDataURL('image/png');a.click();status('画像の保存を開始しました。','ok')}catch(e){status('保存できませんでした。Safariでページを開いてお試しください。','error')}};
+ draw();
+ // PWA: HTTPSで公開された場合にService Workerを登録（file://では登録できません）
+ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+   window.addEventListener('load', () => {
+     navigator.serviceWorker.register('./sw.js').catch(() => {});
+   });
+ }
+})();
+</script>
+</body>
+</html>
